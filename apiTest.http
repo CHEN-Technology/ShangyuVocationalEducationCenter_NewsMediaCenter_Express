@@ -1,0 +1,52 @@
+@host=http://localhost:4000/api
+@json = Content-Type: application/json
+
+### 所有用户
+GET {{host}}/users
+
+### 所有用户的在线状态
+GET {{host}}/users/onlineStatus
+
+### 重置用户密码
+PATCH  {{host}}/users/resetPassword
+{{json}}
+
+{
+    "id": "67f8fd0d98d671b18c6f64fe"
+}
+
+### 登录
+POST {{host}}/login
+{{json}}
+
+{
+    "identity": 0,
+    "username": "admin",
+    "password": "syadmin"
+}
+
+### 注册
+POST {{host}}/register
+{{json}}
+
+{
+    "identity": 2,
+    "username": "test",
+    "password": "syadmin"
+}
+
+### 个人信息
+GET {{host}}/profile
+{{json}}
+
+{
+    "Cookie": {
+        "jwt":"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY3Zjc4ZmEyYjE2N2MwYjc4ODk0Y2FkMiIsImlhdCI6MTc0NDI3Nzk1NSwiZXhwIjoxNzQ0MzY0MzU1fQ.ojPwshuwjX4Gb4Blf7pi2ISYHg6FElpDfWW4w_usqbA"
+    }
+}
+
+### 系统相关配置
+GET {{host}}/system
+
+### 退出登录
+POST {{host}}/logout
