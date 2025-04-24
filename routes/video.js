@@ -1,6 +1,8 @@
 const express = require("express");
 const fs = require("fs-extra");
 const path = require("path");
+const mongoose = require("mongoose");
+const VideoCate = require("../models/VideoCate"); // 引入模型
 
 const router = express.Router();
 
@@ -130,6 +132,162 @@ router.get("/video/verify/:filename", async (req, res) => {
 		} else {
 			res.json({ success: true, needUpload: true, uploadedChunks });
 		}
+	}
+});
+
+// 获取分类列表（按order排序）
+router.get("/video/categories", async (req, res) => {
+	try {
+		const { page = 1, limit = 10 } = req.query;
+
+		// 分页逻辑
+		const skip = (page - 1) * limit;
+		const categories = await VideoCate.find()
+			.sort({ order: 1 })
+			.skip(skip)
+			.limit(parseInt(limit));
+
+		// 总数统计
+		const total = await VideoCate.countDocuments();
+
+		res.json({
+			success: true,
+			data: categories,
+			total,
+			page: parseInt(page),
+			limit: parseInt(limit),
+			totalPages: Math.ceil(total / limit),
+		});
+	} catch (error) {
+		res.status(500).json({ success: false, message: "获取分类失败" });
+	}
+});
+
+// 更新分类排序
+router.put("/video/categories/order", async (req, res) => {
+	const { orderedIds } = req.body;
+
+	try {
+		// 1. 生成唯一的临时负数值（避免冲突）
+		const tempOrders = orderedIds.map((_, index) => -(index + 1) * 1000);
+
+		// 2. 第一阶段：设置唯一临时值
+		const stage1Updates = orderedIds.map((id, index) => ({
+			updateOne: {
+				filter: { _id: id },
+				update: { $set: { order: tempOrders[index] } },
+			},
+		}));
+		await VideoCate.bulkWrite(stage1Updates);
+
+		// 3. 第二阶段：设置最终order值
+		const stage2Updates = orderedIds.map((id, index) => ({
+			updateOne: {
+				filter: { _id: id },
+				update: { $set: { order: index + 1 } },
+			},
+		}));
+		await VideoCate.bulkWrite(stage2Updates);
+
+		res.json({ success: true });
+	} catch (error) {
+		console.error("排序更新失败:", error);
+		res.status(500).json({
+			success: false,
+			message:
+				error.code === 11000
+					? "排序冲突：请确保没有重复的排序值"
+					: "更新排序失败",
+			error: error.message,
+		});
+	}
+});
+
+// 添加分类
+router.post("/video/categories", async (req, res) => {
+	try {
+		// 获取当前最大order值
+		const maxOrder = await VideoCate.findOne()
+			.sort("-order")
+			.select("order")
+			.lean();
+
+		const newCategory = new VideoCate({
+			...req.body,
+			order: maxOrder ? maxOrder.order + 1 : 1,
+		});
+
+		await newCategory.save();
+		res.json({ success: true, data: newCategory });
+	} catch (error) {
+		if (error.code === 11000) {
+			res.status(400).json({
+				success: false,
+				message: "分类名称已存在或排序值重复",
+			});
+		} else {
+			res.status(500).json({
+				success: false,
+				message: "创建分类失败",
+			});
+		}
+	}
+});
+
+// 更新分类
+router.put("/video/categories/:id", async (req, res) => {
+	try {
+		const updated = await VideoCate.findByIdAndUpdate(req.params.id, req.body, {
+			new: true,
+		});
+
+		if (!updated) {
+			return res.status(404).json({
+				success: false,
+				message: "分类未找到",
+			});
+		}
+
+		res.json({ success: true, data: updated });
+	} catch (error) {
+		if (error.code === 11000) {
+			res.status(400).json({
+				success: false,
+				message: "分类名称已存在或排序值重复",
+			});
+		} else {
+			res.status(500).json({
+				success: false,
+				message: "更新分类失败",
+			});
+		}
+	}
+});
+
+// 删除分类
+router.delete("/video/categories/:id", async (req, res) => {
+	try {
+		const deleted = await VideoCate.findByIdAndDelete(req.params.id);
+
+		if (!deleted) {
+			return res.status(404).json({
+				success: false,
+				message: "分类未找到",
+			});
+		}
+
+		// 重新排序剩余分类
+		await VideoCate.updateMany(
+			{ order: { $gt: deleted.order } },
+			{ $inc: { order: -1 } }
+		);
+
+		res.json({ success: true });
+	} catch (error) {
+		res.status(500).json({
+			success: false,
+			message: "删除分类失败",
+		});
 	}
 });
 

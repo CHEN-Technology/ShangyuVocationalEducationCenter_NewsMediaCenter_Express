@@ -50,3 +50,6 @@ GET {{host}}/system
 
 ### 退出登录
 POST {{host}}/logout
+
+### 分类
+GET {{host}}/video/categories

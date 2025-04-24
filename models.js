@@ -6,6 +6,7 @@ const Nav = require("./models/Nav");
 const AvatarMenu = require("./models/AvatarMenu");
 const Title = require("./models/Title");
 const AdminMenu = require("./models/AdminMenu");
+const VideoCate = require("./models/VideoCate");
 
 const connectionStates = {
 	0: "disconnected", // 未连接
@@ -145,7 +146,16 @@ mongoose.connection.once("open", async () => {
 					link: "/admin/video",
 					order: 2,
 					icon: "Video",
-					subTab: [],
+					subTab: [
+						{
+							title: "分类管理",
+							link: "/admin/video/cate",
+						},
+						{
+							title: "视频管理",
+							link: "/admin/video/list",
+						},
+					],
 				},
 				{
 					title: "评论管理",
@@ -163,6 +173,29 @@ mongoose.connection.once("open", async () => {
 				},
 			]);
 
+			await VideoCate.insertMany([
+				{
+					name: "全部",
+					status: true,
+					order: 1,
+				},
+				{
+					name: "视频",
+					status: true,
+					order: 2,
+				},
+				{
+					name: "直播",
+					status: true,
+					order: 3,
+				},
+				{
+					name: "图文",
+					status: true,
+					order: 4,
+				},
+			]);
+
 			console.log("管理员账号自动创建成功");
 			console.log(
 				`默认管理员账户：admin\t默认密码：syadmin\t注意：请及时修改密码！`
@@ -173,4 +206,4 @@ mongoose.connection.once("open", async () => {
 	}
 });
 
-module.exports = { User, Nav, AvatarMenu, Title, AdminMenu };
+module.exports = { User, Nav, AvatarMenu, Title, AdminMenu, VideoCate };

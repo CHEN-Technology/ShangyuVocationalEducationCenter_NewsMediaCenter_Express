@@ -7,7 +7,7 @@ router.get("/users", auth, async (req, res) => {
 	try {
 		const {
 			page = 1,
-			limit = 10,
+			limit = 11,
 			search, // 搜索关键词
 			identity,
 		} = req.query;
@@ -30,6 +30,7 @@ router.get("/users", auth, async (req, res) => {
 		// 分页逻辑
 		const skip = (page - 1) * limit;
 		const users = await User.find(query).skip(skip).limit(parseInt(limit));
+		console.log(users);
 
 		// 总数统计
 		const total = await User.countDocuments(query);
