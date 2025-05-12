@@ -1,12 +1,12 @@
 const express = require("express");
 const router = express.Router();
 const Nav = require("../models/Nav");
-const Title = require("../models/Title");
+const System = require("../models/System");
 const AvatarMenu = require("../models/AvatarMenu");
 const AdminMenu = require("../models/AdminMenu");
 
 router.get("/system", async (req, res) => {
-	const titleAll = await Title.find()
+	const system = await System.find()
 		.then((data) => {
 			return data;
 		})
@@ -38,14 +38,17 @@ router.get("/system", async (req, res) => {
 			return err;
 		});
 
-	const returnData = {
-		titleAll,
-		navMenu,
-		avatarMenuAll,
-		AdminMenuAll,
-	};
+	if (system && navMenu && avatarMenuAll && AdminMenuAll) {
+		const returnData = {
+			success: true,
+			system,
+			navMenu,
+			avatarMenuAll,
+			AdminMenuAll,
+		};
 
-	res.json(returnData);
+		res.json(returnData);
+	}
 });
 
 module.exports = router;

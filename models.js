@@ -1,11 +1,13 @@
 const mongoose = require("mongoose");
 const moment = require("moment-timezone");
 moment.tz.setDefault("Asia/Shanghai");
+const schedule = require("node-schedule");
 const User = require("./models/User");
 const Nav = require("./models/Nav");
 const AvatarMenu = require("./models/AvatarMenu");
-const Title = require("./models/Title");
+const System = require("./models/System");
 const AdminMenu = require("./models/AdminMenu");
+const Video = require("./models/Video");
 const VideoCate = require("./models/VideoCate");
 
 const connectionStates = {
@@ -15,6 +17,88 @@ const connectionStates = {
 	3: "disconnecting", // 断开中
 };
 
+// 添加每月统计视频数量的函数
+async function updateMonthlyVideoStats() {
+	try {
+		const currentMonthStart = moment().startOf("month").toDate();
+		const count = await Video.countDocuments();
+
+		// 查询系统记录
+		const systemData = await System.findOne({});
+
+		if (systemData?.monthlyVideoStats?.length > 0) {
+			const latestStat = systemData.monthlyVideoStats[0];
+			const isSameMonth = moment(latestStat.date).isSame(
+				currentMonthStart,
+				"month"
+			);
+
+			if (isSameMonth) {
+				// 1. 时间未改变，但值改变 → 覆盖
+				if (latestStat.count !== count) {
+					await System.updateOne(
+						{ "monthlyVideoStats.date": currentMonthStart },
+						{
+							$set: {
+								"monthlyVideoStats.$.count": count,
+								lastStatsUpdate: new Date(),
+							},
+						}
+					);
+					console.log(
+						`[${moment().format(
+							"YYYY-MM-DD HH:mm:ss"
+						)}] 更新当月视频统计: ${count}条 (${moment(
+							currentMonthStart
+						).format("YYYY-MM")})`
+					);
+				} else {
+					console.log(
+						`[${moment().format(
+							"YYYY-MM-DD HH:mm:ss"
+						)}] 本月数据未变化，无需更新: ${count}条 (${moment(
+							currentMonthStart
+						).format("YYYY-MM")})`
+					);
+				}
+				return; // 无论是否更新，同月数据已处理完毕
+			}
+		}
+
+		// 2. 时间改变（新月份）→ 新增记录（无论值是否改变）
+		await System.updateOne(
+			{},
+			{
+				$push: {
+					monthlyVideoStats: {
+						$each: [
+							{
+								date: currentMonthStart,
+								count: count,
+							},
+						],
+						$sort: { date: -1 },
+						$slice: 100,
+					},
+				},
+				$set: {
+					lastStatsUpdate: new Date(),
+				},
+			},
+			{ upsert: true }
+		);
+
+		console.log(
+			`[${moment().format(
+				"YYYY-MM-DD HH:mm:ss"
+			)}] 新增视频月统计: ${count}条 (${moment(currentMonthStart).format(
+				"YYYY-MM"
+			)})`
+		);
+	} catch (error) {
+		console.error("更新视频月统计失败:", error.message);
+	}
+}
 function monitorConnection() {
 	const currentState = mongoose.connection.readyState;
 	console.log(
@@ -114,10 +198,12 @@ mongoose.connection.once("open", async () => {
 				},
 			]);
 
-			await Title.insertOne({
-				title: "上虞职业教育中心",
-				subTitle: "新闻媒体中心",
-				link: "/",
+			await System.insertOne({
+				title: {
+					title: "上虞职业教育中心",
+					subTitle: "新闻媒体中心",
+					link: "/",
+				},
 			});
 
 			await User.create({
@@ -175,22 +261,26 @@ mongoose.connection.once("open", async () => {
 
 			await VideoCate.insertMany([
 				{
-					name: "全部",
+					name: "游戏",
+					value: "game",
 					status: true,
 					order: 1,
 				},
 				{
-					name: "视频",
+					name: "娱乐",
+					value: "entertainment",
 					status: true,
 					order: 2,
 				},
 				{
-					name: "直播",
+					name: "影视",
+					value: "movie",
 					status: true,
 					order: 3,
 				},
 				{
-					name: "图文",
+					name: "音乐",
+					value: "music",
 					status: true,
 					order: 4,
 				},
@@ -201,9 +291,19 @@ mongoose.connection.once("open", async () => {
 				`默认管理员账户：admin\t默认密码：syadmin\t注意：请及时修改密码！`
 			);
 		}
+
+		const job = schedule.scheduleJob("0 0 0 1 * *", async () => {
+			console.log(
+				`[${moment().format("YYYY-MM-DD HH:mm:ss")}] 执行每月视频统计任务`
+			);
+			await updateMonthlyVideoStats();
+		});
+
+		// 立即执行一次，确保当月数据被记录（可选）
+		await updateMonthlyVideoStats();
+
+		console.log("✅ 已设置每月视频统计定时任务");
 	} catch (error) {
 		console.error("初始化管理员账号失败:", error.message);
 	}
 });
-
-module.exports = { User, Nav, AvatarMenu, Title, AdminMenu, VideoCate };

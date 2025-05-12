@@ -53,3 +53,20 @@ POST {{host}}/logout
 
 ### 分类
 GET {{host}}/video/categories
+
+### 视频列表
+GET {{host}}/video
+
+### 视频id
+GET {{host}}/video/6814d1b53b73796118955808
+
+### 视频分类
+GET {{host}}/video
+{{json}}
+
+{
+    "category": "娱乐"
+}
+
+### 视频合并
+GET {{host}}/video/merge/402cc288a5bff7d89a684e8b345b7efbd54d5775e811a388a5c52b5d78d304ec.mp4

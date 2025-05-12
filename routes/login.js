@@ -8,7 +8,6 @@ router.post("/login", async function (req, res, next) {
 	try {
 		const user = await User.findOne({
 			username: req.body.username,
-			identity: req.body.identity,
 		});
 
 		if (!user) return res.status(422).json({ error: "用户不存在" });
