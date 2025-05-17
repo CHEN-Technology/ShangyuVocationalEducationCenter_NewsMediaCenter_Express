@@ -168,19 +168,19 @@ mongoose.connection.once("open", async () => {
 			await AvatarMenu.insertMany([
 				{
 					title: "我的资料",
-					link: "/user",
+					link: "/user/profile",
 					order: 0,
 					icon: "User",
 				},
 				{
 					title: "我的收藏",
-					link: "/favorite",
+					link: "/user/favorite",
 					order: 1,
 					icon: "Star",
 				},
 				{
 					title: "我的评论",
-					link: "/comment",
+					link: "/user/comment",
 					order: 2,
 					icon: "MessageCircle",
 				},
@@ -200,8 +200,8 @@ mongoose.connection.once("open", async () => {
 
 			await System.insertOne({
 				title: {
-					title: "上虞职业教育中心",
-					subTitle: "新闻媒体中心",
+					title: "流脉媒体",
+					subTitle: "Flow Media",
 					link: "/",
 				},
 			});
@@ -261,20 +261,20 @@ mongoose.connection.once("open", async () => {
 
 			await VideoCate.insertMany([
 				{
-					name: "游戏",
-					value: "game",
+					name: "文学",
+					value: "literature",
 					status: true,
 					order: 1,
 				},
 				{
-					name: "娱乐",
-					value: "entertainment",
+					name: "数学",
+					value: "math",
 					status: true,
 					order: 2,
 				},
 				{
-					name: "影视",
-					value: "movie",
+					name: "英语",
+					value: "english",
 					status: true,
 					order: 3,
 				},
@@ -283,6 +283,48 @@ mongoose.connection.once("open", async () => {
 					value: "music",
 					status: true,
 					order: 4,
+				},
+				{
+					name: "地理",
+					value: "geography",
+					status: true,
+					order: 5,
+				},
+				{
+					name: "历史",
+					value: "history",
+					status: true,
+					order: 6,
+				},
+				{
+					name: "物理",
+					value: "physics",
+					status: true,
+					order: 7,
+				},
+				{
+					name: "化学",
+					value: "chemistry",
+					status: true,
+					order: 8,
+				},
+				{
+					name: "生物",
+					value: "biology",
+					status: true,
+					order: 9,
+				},
+				{
+					name: "计算机",
+					value: "computer",
+					status: true,
+					order: 10,
+				},
+				{
+					name: "网络技术",
+					value: "network",
+					status: true,
+					order: 11,
 				},
 			]);
 

@@ -97,8 +97,8 @@ const generateTranscodingParams = (
 // 获取硬件加速参数
 const getHardwareAccelParams = async (codec) => {
 	const params = {
-		decoder: codec === "av1" ? "libsvtav1" : "hevc" ? "libx265" : "libx264",
-		encoder: codec === "av1" ? "libdav1d" : "hevc" ? "hevc" : "h264",
+		decoder: codec === "av1" ? "libdav1d" : "hevc" ? "hevc" : "h264",
+		encoder: codec === "av1" ? "libsvtav1" : "hevc" ? "libx265" : "libx264",
 	};
 
 	try {

@@ -1,4 +1,4 @@
-@host=http://localhost:4000/api
+@host=http://localhost:2000/api
 @json = Content-Type: application/json
 
 ### 所有用户
@@ -55,18 +55,20 @@ POST {{host}}/logout
 GET {{host}}/video/categories
 
 ### 视频列表
-GET {{host}}/video
+GET {{host}}/video?limit=5&status=normal
 
 ### 视频id
-GET {{host}}/video/6814d1b53b73796118955808
+GET {{host}}/video/6824b9aa24e7e30728fd0e1f
 
 ### 视频分类
-GET {{host}}/video
-{{json}}
+GET {{host}}/video?category=计算机&page=1&limit=12
 
-{
-    "category": "娱乐"
-}
 
 ### 视频合并
 GET {{host}}/video/merge/402cc288a5bff7d89a684e8b345b7efbd54d5775e811a388a5c52b5d78d304ec.mp4
+
+### 推荐视频
+GET {{host}}/video/recommended?page=1&limit=10&status=normal
+
+### 搜索视频分类
+GET {{host}}/video/categories?value=computer

@@ -5,6 +5,8 @@ const multer = require("multer");
 const VideoCate = require("../models/VideoCate");
 const Video = require("../models/Video");
 const transcodeQueue = require("../utils/transcodeQueue");
+const mongoose = require("mongoose");
+const { ObjectId } = mongoose.Types;
 
 const router = express.Router();
 
@@ -29,6 +31,34 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
+const clients = new Set(); // 存储所有连接的客户端
+
+// SSE路由
+router.get("/video/updates", (req, res) => {
+	res.setHeader("Content-Type", "text/event-stream");
+	res.setHeader("Cache-Control", "no-cache");
+	res.setHeader("Connection", "keep-alive");
+
+	// 将响应对象添加到客户端集合
+	const clientId = Date.now();
+	clients.add(res);
+
+	// 客户端断开连接时清理
+	req.on("close", () => {
+		clients.delete(res);
+	});
+});
+
+// 广播数据更新通知的函数
+function broadcastUpdate(type) {
+	const data = JSON.stringify({ type, timestamp: new Date().toISOString() });
+	console.log(data);
+
+	clients.forEach((client) => {
+		client.write(`data: ${data}\n\n`);
+	});
+}
+
 router.post("/video/create", upload.single("cover"), async (req, res) => {
 	try {
 		const coverFile = req.file;
@@ -36,6 +66,7 @@ router.post("/video/create", upload.single("cover"), async (req, res) => {
 
 		const { title, category, description, filename, duration, size, author } =
 			req.body;
+
 		const durationInSeconds = parseFloat(duration);
 
 		if (!title || !category) throw new Error("缺少必填字段");
@@ -106,6 +137,7 @@ router.post("/video/create", upload.single("cover"), async (req, res) => {
 			],
 			duration: durationInSeconds,
 			size,
+			status: "processing",
 			author,
 		});
 		await video.save();
@@ -256,10 +288,15 @@ router.get("/video/categories", async (req, res) => {
 			status, // 新增状态筛选
 			sortField = "order", // 默认排序字段
 			sortOrder = "asc", // 默认排序顺序
+			value,
 		} = req.query;
 
 		// 构建查询条件
 		const query = {};
+
+		if (value) {
+			query.value = value;
+		}
 
 		// 搜索条件
 		if (search) {
@@ -362,6 +399,9 @@ router.post("/video/categories", async (req, res) => {
 		});
 
 		await newCategory.save();
+
+		broadcastUpdate("categories");
+
 		res.json({ success: true, data: newCategory });
 	} catch (error) {
 		if (error.code === 11000) {
@@ -391,6 +431,8 @@ router.put("/video/categories/:id", async (req, res) => {
 				message: "分类未找到",
 			});
 		}
+
+		broadcastUpdate("categories");
 
 		res.json({ success: true, data: updated });
 	} catch (error) {
@@ -426,6 +468,8 @@ router.delete("/video/categories/:id", async (req, res) => {
 			{ $inc: { order: -1 } }
 		);
 
+		broadcastUpdate("categories");
+
 		res.json({ success: true });
 	} catch (error) {
 		res.status(500).json({
@@ -441,56 +485,74 @@ router.get("/video", async (req, res) => {
 			page = 1,
 			limit = 10,
 			search,
-			category, // 改为category更符合前端参数命名
+			category,
 			sortField = "uploadDate",
 			sortOrder = "desc",
+			sort,
+			status, // 要筛选的status值
 		} = req.query;
 
-		// 构建查询条件
-		const query = {};
+		// 验证status参数是否合法
+		if (status && !["processing", "normal"].includes(status)) {
+			return res.status(400).json({
+				success: false,
+				message: "status参数只能是'processing'或'normal'",
+			});
+		}
 
-		// 搜索条件
+		// 构建基础查询条件（搜索和分类）
+		const baseQuery = {};
 		if (search) {
-			query.$or = [
+			baseQuery.$or = [
 				{ title: { $regex: search, $options: "i" } },
 				{ description: { $regex: search, $options: "i" } },
 			];
 		}
-
-		// 分类筛选条件
 		if (category) {
-			// 支持传入单个分类ID或分类ID数组
-			if (Array.isArray(category)) {
-				query.category = { $in: category };
-			} else {
-				query.category = category;
-			}
+			baseQuery.category = Array.isArray(category)
+				? { $in: category }
+				: category;
 		}
 
-		// 分页逻辑
-		const skip = (page - 1) * limit;
+		// 如果有status参数，添加到查询条件
+		if (status) {
+			baseQuery.status = status;
+		}
 
 		// 排序逻辑
-		const sort = {};
-		sort[sortField] = sortOrder === "asc" ? 1 : -1;
+		const sortOptions = {};
+		if (sort) {
+			const isDesc = sort.startsWith("-");
+			const field = isDesc ? sort.substring(1) : sort;
+			const allowedSortFields = ["hits", "uploadDate", "title", "duration"];
+			if (allowedSortFields.includes(field)) {
+				sortOptions[field] = isDesc ? -1 : 1;
+			}
+		} else {
+			sortOptions[sortField] = sortOrder === "asc" ? 1 : -1;
+		}
+
+		// 分页参数
+		const skip = (page - 1) * limit;
+		const parsedLimit = parseInt(limit);
 
 		// 查询视频
-		const videos = await Video.find(query)
-			.sort(sort)
+		const videos = await Video.find(baseQuery)
+			.sort(sortOptions)
 			.skip(skip)
-			.limit(parseInt(limit))
-			.populate("category", "name route"); // 关联分类信息
+			.limit(parsedLimit)
+			.populate("category", "name route");
 
 		// 总数统计
-		const total = await Video.countDocuments(query);
+		const total = await Video.countDocuments(baseQuery);
 
 		res.json({
 			success: true,
 			data: videos,
 			total,
 			page: parseInt(page),
-			limit: parseInt(limit),
-			totalPages: Math.ceil(total / limit),
+			limit: parsedLimit,
+			totalPages: Math.ceil(total / parsedLimit),
 		});
 	} catch (error) {
 		console.error("获取视频失败:", error);
@@ -498,6 +560,174 @@ router.get("/video", async (req, res) => {
 			success: false,
 			message: "获取视频失败",
 			error: error.message,
+		});
+	}
+});
+
+router.get("/video/news", async (req, res) => {
+	try {
+		const { page = 1, limit = 4, exclude = "", status } = req.query;
+
+		// 安全创建 ObjectId 的现代方法
+		const excludeIds = exclude
+			.split(",")
+			.filter((id) => {
+				try {
+					return id && new ObjectId(id).toString() === id;
+				} catch {
+					return false;
+				}
+			})
+			.map((id) => new ObjectId(id));
+
+		if (status && !["processing", "normal"].includes(status)) {
+			return res.status(400).json({
+				success: false,
+				message: "status参数只能是'processing'或'normal'",
+			});
+		}
+
+		const topHitsVideos = await Video.find({ status: "normal" })
+			.sort("-hits")
+			.limit(5)
+			.select("_id")
+			.lean();
+
+		const topHitsIds = topHitsVideos.map((video) => video._id);
+
+		// 构建查询条件：排除指定的ID和点击量最高的4个视频
+		const query = {
+			_id: {
+				$nin: [...excludeIds, ...topHitsIds],
+			},
+		};
+
+		// 状态筛选
+		if (status) {
+			query.status = status;
+		}
+
+		const [videos, total] = await Promise.all([
+			Video.find(query)
+				.sort("-uploadDate")
+				.skip((page - 1) * limit)
+				.limit(parseInt(limit))
+				.populate("category", "name value")
+				.lean(),
+			Video.countDocuments(query),
+		]);
+
+		res.json({
+			success: true,
+			data: videos,
+			meta: {
+				page: parseInt(page),
+				limit: parseInt(limit),
+				total,
+				totalPages: Math.ceil(total / limit),
+			},
+		});
+	} catch (error) {
+		console.error("Error:", error);
+		res.status(500).json({
+			success: false,
+			message: "Server Error",
+			error: process.env.NODE_ENV === "development" ? error.message : undefined,
+		});
+	}
+});
+
+// 推荐视频路由
+router.get("/video/recommended", async (req, res) => {
+	try {
+		const {
+			page = 1,
+			limit = 4,
+			exclude = "",
+			status,
+			lastId, // 用于无缝滚动加载
+		} = req.query;
+
+		// 处理排除ID
+		const excludeIds = exclude
+			.split(",")
+			.filter((id) => {
+				try {
+					return id && new ObjectId(id).toString() === id;
+				} catch {
+					return false;
+				}
+			})
+			.map((id) => new ObjectId(id));
+
+		// 状态验证
+		if (status && !["processing", "normal"].includes(status)) {
+			return res.status(400).json({
+				success: false,
+				message: "status参数只能是'processing'或'normal'",
+			});
+		}
+
+		// 获取热门视频ID（用于排除）
+		const topHitsVideos = await Video.find({ status: "normal" })
+			.sort("-hits")
+			.limit(5)
+			.select("_id")
+			.lean();
+		const topHitsIds = topHitsVideos.map((video) => video._id);
+
+		// 构建查询条件
+		const query = {
+			_id: {
+				$nin: [...excludeIds, ...topHitsIds],
+			},
+			status: "normal", // 默认只返回正常状态的视频
+		};
+
+		// 状态筛选
+		if (status) {
+			query.status = status;
+		}
+
+		// 无缝滚动加载条件
+		if (lastId) {
+			try {
+				const lastVideo = await Video.findById(lastId);
+				if (lastVideo) {
+					query.uploadDate = { $lt: lastVideo.uploadDate };
+				}
+			} catch (error) {
+				console.error("Invalid lastId:", error);
+			}
+		}
+
+		// 获取推荐视频
+		const recommendedVideos = await Video.find(query)
+			.sort("-uploadDate")
+			.skip((page - 1) * limit)
+			.limit(parseInt(limit))
+			.populate("category", "name value")
+			.lean();
+
+		// 获取总数（用于分页）
+		const total = await Video.countDocuments(query);
+
+		res.json({
+			success: true,
+			data: recommendedVideos,
+			meta: {
+				page: parseInt(page),
+				limit: parseInt(limit),
+				total,
+				totalPages: Math.ceil(total / limit),
+			},
+		});
+	} catch (error) {
+		console.error("获取推荐视频失败:", error);
+		res.status(500).json({
+			success: false,
+			message: "获取推荐视频失败",
+			error: process.env.NODE_ENV === "development" ? error.message : undefined,
 		});
 	}
 });
@@ -523,6 +753,9 @@ router.put("/video/:id", async (req, res) => {
 		if (!updated) {
 			return res.status(404).json({ success: false, message: "视频未找到" });
 		}
+
+		broadcastUpdate("videos");
+
 		res.json({ success: true, data: updated });
 	} catch (error) {
 		res.status(500).json({ success: false, message: "更新视频失败" });
@@ -555,12 +788,48 @@ router.delete("/video/:id", async (req, res) => {
 			return res.status(404).json({ success: false, message: "视频未找到" });
 		}
 
+		broadcastUpdate("videos");
+
 		res.json({ success: true });
 	} catch (error) {
 		console.error("删除视频失败:", error);
 		res.status(500).json({
 			success: false,
 			message: "删除视频失败",
+			error: error.message,
+		});
+	}
+});
+
+router.post("/video/updateHits/:id", async (req, res) => {
+	try {
+		const videoId = req.params.id;
+
+		// 使用 $inc 操作符将 hits 字段加 1
+		const updatedVideo = await Video.findByIdAndUpdate(
+			videoId,
+			{ $inc: { hits: 1 } }, // 原子操作，每次加1
+			{ new: true } // 返回更新后的文档
+		);
+
+		if (!updatedVideo) {
+			return res.status(404).json({
+				success: false,
+				message: "视频未找到",
+			});
+		}
+
+		broadcastUpdate("videos");
+
+		res.json({
+			success: true,
+			data: updatedVideo,
+		});
+	} catch (error) {
+		console.error("更新点击量失败:", error);
+		res.status(500).json({
+			success: false,
+			message: "更新点击量失败",
 			error: error.message,
 		});
 	}
